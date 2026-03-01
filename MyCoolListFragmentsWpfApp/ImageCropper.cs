@@ -17,24 +17,41 @@ namespace MyCoolListFragmentsWpfApp
             try
             {
                 BitmapImage sourceImage = new BitmapImage();
-                sourceImage.BeginInit();
-                sourceImage.UriSource = new Uri(sourcePath, UriKind.Absolute);
-                sourceImage.CacheOption = BitmapCacheOption.OnLoad;
-                sourceImage.EndInit();
+
+                using (FileStream stream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    sourceImage.BeginInit();
+                    sourceImage.StreamSource = stream;
+                    sourceImage.CacheOption = BitmapCacheOption.OnLoad;
+                    sourceImage.EndInit();
+                }
+
+                sourceImage.Freeze(); // Фиксируем для использования из другого потока
 
                 CroppedBitmap croppedImage = new CroppedBitmap(sourceImage, new Int32Rect(fragment.X, fragment.Y, width, height));
 
-                JpegBitmapEncoder encoder = new JpegBitmapEncoder();
-                encoder.QualityLevel = 90;
-                encoder.Frames.Add(BitmapFrame.Create(croppedImage));
+                // Сохраняем обрезанное изображение
+                string directory = Path.GetDirectoryName(sourcePath);
+                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(sourcePath);
+                string extension = Path.GetExtension(sourcePath);
+                string newFileName = $"{fileNameWithoutExt}_crop_{fragment.Number}_{fragment.X}_{fragment.Y}{extension}";
+                string newFilePath = Path.Combine(directory, newFileName);
 
-                using (FileStream fileStream = new FileStream(sourcePath, FileMode.Create, FileAccess.Write))
+                using (FileStream fileStream = new FileStream(newFilePath, FileMode.Create, FileAccess.Write))
                 {
+                    JpegBitmapEncoder encoder = new JpegBitmapEncoder();
+                    encoder.QualityLevel = 90;
+                    encoder.Frames.Add(BitmapFrame.Create(croppedImage));
                     encoder.Save(fileStream);
                 }
 
-                croppedImage.Freeze();
-                fragment.Image = sourcePath;
+                // Очищаем ресурсы
+                croppedImage = null;
+                sourceImage = null;
+                // Принудительная сборка мусора
+                GC.Collect(); 
+
+                fragment.Image = newFilePath;
             }
             catch (Exception ex)
             {
